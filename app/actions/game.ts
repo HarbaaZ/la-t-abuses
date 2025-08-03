@@ -1,9 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getRandomCustomQuestions } from '../../data/custom-questions';
-import { questions } from '../../data/questions';
-import { GameState, Player, Question, RoundResult } from '../../types/game';
+'use server';
 
-// Stockage global des jeux (en mémoire pour Vercel)
+import { revalidatePath } from 'next/cache';
+import { getRandomCustomQuestions } from '../data/custom-questions';
+import { questions } from '../data/questions';
+import { GameState, Player, Question, RoundResult } from '../types/game';
+
+// Stockage global des jeux (en mémoire)
 const games = new Map<string, GameState>();
 
 // Fonction pour nettoyer les jeux anciens (plus de 2 heures)
@@ -60,76 +62,8 @@ function getRandomQuestion(gameQuestions: Question[], usedQuestionIds: string[] 
   return availableQuestions[randomIndex];
 }
 
-export async function GET(req: NextRequest) {
-  try {
-    console.log('GET /api/game called');
-    
-    const { searchParams } = new URL(req.url);
-    const gameId = searchParams.get('gameId');
-    
-    console.log(`Game ID from params: ${gameId}`);
-    
-    if (!gameId) {
-      console.log('No game ID provided');
-      return NextResponse.json({ error: 'Game ID required' }, { status: 400 });
-    }
-
-    console.log(`GET request for game: ${gameId}`);
-    console.log(`Available games: ${Array.from(games.keys()).join(', ')}`);
-
-    const game = games.get(gameId);
-    if (!game) {
-      console.log(`Game not found: ${gameId}`);
-      return NextResponse.json({ error: 'Game not found' }, { status: 404 });
-    }
-
-    console.log(`Game found: ${gameId}, returning game data`);
-    return NextResponse.json(game);
-  } catch (error) {
-    console.error('Error in GET /api/game:', error);
-    return NextResponse.json({ 
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
-  }
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    console.log('POST /api/game called');
-    
-    const body = await req.json();
-    const { action, gameId, playerName, playerId, value, targetPlayerId, settings } = body;
-
-    console.log(`POST request - Action: ${action}, GameId: ${gameId}`);
-
-    switch (action) {
-      case 'joinGame':
-        return handleJoinGame(gameId, playerName, playerId);
-      case 'startGame':
-        return await handleStartGame(gameId, playerId, settings);
-      case 'submitGuess':
-        return handleSubmitGuess(gameId, playerId, value);
-      case 'issueChallenge':
-        return handleIssueChallenge(gameId, playerId, targetPlayerId);
-      case 'nextQuestion':
-        return handleNextQuestion(gameId, playerId);
-      case 'clearRoundResult':
-        return handleClearRoundResult(gameId);
-      default:
-        console.log(`Invalid action: ${action}`);
-        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
-    }
-  } catch (error) {
-    console.error('Error in POST /api/game:', error);
-    return NextResponse.json({ 
-      error: 'Internal server error',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
-  }
-}
-
-function handleJoinGame(gameId: string, playerName: string, playerId: string) {
+// Server Action pour rejoindre une partie
+export async function joinGame(gameId: string, playerName: string, playerId: string) {
   console.log(`Joining game: ${gameId}, Player: ${playerName} (${playerId})`);
   
   let game = games.get(gameId);
@@ -157,7 +91,7 @@ function handleJoinGame(gameId: string, playerName: string, playerId: string) {
   const existingPlayer = game.players.find((p: Player) => p.name === playerName);
   if (existingPlayer) {
     console.log(`Player name already exists: ${playerName}`);
-    return NextResponse.json({ error: 'Un joueur avec ce nom existe déjà dans la partie' }, { status: 400 });
+    throw new Error('Un joueur avec ce nom existe déjà dans la partie');
   }
 
   const player: Player = {
@@ -173,23 +107,25 @@ function handleJoinGame(gameId: string, playerName: string, playerId: string) {
 
   console.log(`Player joined successfully: ${playerName}, Total players: ${game.players.length}`);
 
-  return NextResponse.json({ success: true, game });
+  revalidatePath('/');
+  return { success: true, game };
 }
 
-async function handleStartGame(gameId: string, playerId: string, settings: { maxScore: number }) {
+// Server Action pour démarrer une partie
+export async function startGame(gameId: string, playerId: string, settings: { maxScore: number }) {
   console.log(`Starting game: ${gameId}, Player: ${playerId}, MaxScore: ${settings.maxScore}`);
   
   const game = games.get(gameId);
   
   if (!game) {
     console.log(`Game not found for start: ${gameId}`);
-    return NextResponse.json({ error: 'Game not found' }, { status: 404 });
+    throw new Error('Game not found');
   }
 
   const player = game.players.find((p: Player) => p.id === playerId);
   if (!player?.isHost) {
     console.log(`Player ${playerId} is not host`);
-    return NextResponse.json({ error: 'Only host can start game' }, { status: 403 });
+    throw new Error('Only host can start game');
   }
 
   try {
@@ -217,7 +153,7 @@ async function handleStartGame(gameId: string, playerId: string, settings: { max
       console.error(`No questions available for game: ${gameId}`);
       // En cas d'erreur, revenir à l'état d'attente
       game.gamePhase = 'waiting';
-      return NextResponse.json({ error: 'Impossible de générer des questions pour la partie' }, { status: 500 });
+      throw new Error('Impossible de générer des questions pour la partie');
     }
     
     // Initialiser la partie
@@ -227,7 +163,8 @@ async function handleStartGame(gameId: string, playerId: string, settings: { max
     
     console.log(`Game started successfully: ${gameId}, First player: ${game.players[0].name}`);
 
-    return NextResponse.json({ success: true, game });
+    revalidatePath('/');
+    return { success: true, game };
   } catch (error) {
     console.error(`Error starting game ${gameId}:`, error);
     
@@ -235,43 +172,41 @@ async function handleStartGame(gameId: string, playerId: string, settings: { max
     game.gamePhase = 'waiting';
     game.lastUpdate = Date.now();
     
-    return NextResponse.json({ 
-      error: 'Erreur lors du démarrage de la partie. Veuillez réessayer.',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    throw new Error('Erreur lors du démarrage de la partie. Veuillez réessayer.');
   }
 }
 
-function handleSubmitGuess(gameId: string, playerId: string, value: number) {
+// Server Action pour soumettre une supposition
+export async function submitGuess(gameId: string, playerId: string, value: number) {
   const game = games.get(gameId);
   
   if (!game) {
     console.log(`Game not found: ${gameId}`);
-    return NextResponse.json({ error: 'Game not found' }, { status: 404 });
+    throw new Error('Game not found');
   }
 
   if (game.gamePhase !== 'playing') {
     console.log(`Game not in playing state. Current phase: ${game.gamePhase}, Game ID: ${gameId}`);
-    return NextResponse.json({ error: 'Game not in playing state' }, { status: 400 });
+    throw new Error('Game not in playing state');
   }
 
   const player = game.players.find((p: Player) => p.id === playerId);
   if (!player) {
     console.log(`Player not found: ${playerId} in game ${gameId}`);
-    return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+    throw new Error('Player not found');
   }
 
   // Vérifier que c'est le tour du joueur
   if (game.currentTurnPlayerId !== playerId) {
     console.log(`Not player's turn. Expected: ${game.currentTurnPlayerId}, Got: ${playerId}`);
-    return NextResponse.json({ error: 'Ce n\'est pas votre tour de jouer' }, { status: 400 });
+    throw new Error('Ce n\'est pas votre tour de jouer');
   }
 
   // Vérifier que la supposition est supérieure à la précédente
   const lastGuess = game.guesses[game.guesses.length - 1];
   if (lastGuess && value <= lastGuess.value) {
     console.log(`Invalid guess value. Last: ${lastGuess.value}, New: ${value}`);
-    return NextResponse.json({ error: 'Votre supposition doit être supérieure à la précédente' }, { status: 400 });
+    throw new Error('Votre supposition doit être supérieure à la précédente');
   }
 
   const guess = {
@@ -308,7 +243,9 @@ function handleSubmitGuess(gameId: string, playerId: string, value: number) {
       game.lastRoundResult = roundResult;
       
       console.log(`Game ended because ${player.name} found the answer and reached negative max score. Winner: ${player.name}`);
-      return NextResponse.json({ 
+      
+      revalidatePath('/');
+      return { 
         success: true, 
         game, 
         roundResult, 
@@ -316,7 +253,7 @@ function handleSubmitGuess(gameId: string, playerId: string, value: number) {
         winners: [player],
         exactAnswerFound: true,
         answerFinder: player
-      });
+      };
     } else {
       // Nouvelle manche - le joueur qui a trouvé la bonne réponse commence
       // Créer le RoundResult avec la question actuelle AVANT de la changer
@@ -342,13 +279,15 @@ function handleSubmitGuess(gameId: string, playerId: string, value: number) {
       game.lastRoundResult = roundResult;
       
       console.log(`New round started because ${player.name} found the answer. Score: ${player.score}, Round: ${game.roundNumber}`);
-      return NextResponse.json({ 
+      
+      revalidatePath('/');
+      return { 
         success: true, 
         game, 
         roundResult,
         exactAnswerFound: true,
         answerFinder: player
-      });
+      };
     }
   }
   
@@ -360,20 +299,22 @@ function handleSubmitGuess(gameId: string, playerId: string, value: number) {
 
   console.log(`Guess submitted successfully. Player: ${player.name}, Value: ${value}, Next player: ${game.players[nextPlayerIndex].name}`);
 
-  return NextResponse.json({ success: true, game });
+  revalidatePath('/');
+  return { success: true, game };
 }
 
-function handleIssueChallenge(gameId: string, playerId: string, targetPlayerId: string) {
+// Server Action pour lancer un défi
+export async function issueChallenge(gameId: string, playerId: string, targetPlayerId: string) {
   const game = games.get(gameId);
   
   if (!game) {
     console.log(`Game not found for challenge: ${gameId}`);
-    return NextResponse.json({ error: 'Game not found' }, { status: 404 });
+    throw new Error('Game not found');
   }
 
   if (game.gamePhase !== 'playing') {
     console.log(`Game not in playing state for challenge. Current phase: ${game.gamePhase}, Game ID: ${gameId}`);
-    return NextResponse.json({ error: 'Game not in playing state' }, { status: 400 });
+    throw new Error('Game not in playing state');
   }
 
   const challenger = game.players.find((p: Player) => p.id === playerId);
@@ -381,14 +322,14 @@ function handleIssueChallenge(gameId: string, playerId: string, targetPlayerId: 
   
   if (!challenger || !challenged) {
     console.log(`Player not found for challenge. Challenger: ${playerId}, Challenged: ${targetPlayerId}`);
-    return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+    throw new Error('Player not found');
   }
 
   // Évaluer le défi
   const lastGuess = game.guesses[game.guesses.length - 1];
   if (!lastGuess || !game.currentQuestion) {
     console.log(`No guess to challenge. Guesses: ${game.guesses.length}, Question: ${!!game.currentQuestion}`);
-    return NextResponse.json({ error: 'No guess to challenge' }, { status: 400 });
+    throw new Error('No guess to challenge');
   }
 
   const isLastGuessCorrect = lastGuess.value <= game.currentQuestion.answer;
@@ -416,7 +357,9 @@ function handleIssueChallenge(gameId: string, playerId: string, targetPlayerId: 
     game.lastRoundResult = roundResult;
     
     console.log(`Game ended. Winners: ${winners.map(w => w.name).join(', ')}`);
-    return NextResponse.json({ success: true, game, roundResult, gameEnded: true, winners });
+    
+    revalidatePath('/');
+    return { success: true, game, roundResult, gameEnded: true, winners };
   } else {
     // Nouvelle manche - le joueur suivant dans l'ordre commence
     game.currentQuestion = getRandomQuestion(game.gameQuestions, game.usedQuestions);
@@ -437,40 +380,36 @@ function handleIssueChallenge(gameId: string, playerId: string, targetPlayerId: 
     game.lastRoundResult = roundResult;
     
     console.log(`New round started. First player: ${game.players[nextPlayerIndex].name}, Round: ${game.roundNumber}`);
-    return NextResponse.json({ success: true, game, roundResult });
+    
+    revalidatePath('/');
+    return { success: true, game, roundResult };
   }
 }
 
-function handleNextQuestion(gameId: string, playerId: string) {
-  const game = games.get(gameId);
+// Server Action pour obtenir l'état d'un jeu
+export async function getGameState(gameId: string) {
+  console.log(`Getting game state for: ${gameId}`);
+  console.log(`Available games: ${Array.from(games.keys()).join(', ')}`);
   
-  if (!game) {
-    return NextResponse.json({ error: 'Game not found' }, { status: 404 });
-  }
-
-  const player = game.players.find((p: Player) => p.id === playerId);
-  if (!player?.isHost) {
-    return NextResponse.json({ error: 'Only host can start new question' }, { status: 403 });
-  }
-
-  game.currentQuestion = getRandomQuestion(game.gameQuestions, game.usedQuestions);
-  if (game.currentQuestion) {
-    game.usedQuestions.push(game.currentQuestion.id);
-  }
-  game.guesses = [];
-  game.roundNumber++;
-  game.currentTurnPlayerId = game.players[0].id;
-  game.lastUpdate = Date.now();
-
-  return NextResponse.json({ success: true, game });
-} 
-
-function handleClearRoundResult(gameId: string) {
   const game = games.get(gameId);
   if (!game) {
-    return NextResponse.json({ error: 'Game not found' }, { status: 404 });
+    console.log(`Game not found: ${gameId}`);
+    return null;
+  }
+  
+  console.log(`Game found: ${gameId}, returning game data`);
+  return game;
+}
+
+// Server Action pour nettoyer le résultat de manche
+export async function clearRoundResult(gameId: string) {
+  const game = games.get(gameId);
+  if (!game) {
+    throw new Error('Game not found');
   }
   game.lastRoundResult = null;
   game.lastUpdate = Date.now();
-  return NextResponse.json({ success: true, game });
+  
+  revalidatePath('/');
+  return { success: true, game };
 } 

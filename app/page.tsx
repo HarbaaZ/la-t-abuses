@@ -1,6 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useTransition } from 'react';
+import {
+  clearRoundResult as clearRoundResultAction,
+  getGameState,
+  issueChallenge as issueChallengeAction,
+  joinGame as joinGameAction,
+  startGame as startGameAction,
+  submitGuess as submitGuessAction
+} from './actions/game';
 import RoundResultModal from './components/RoundResult';
 import { GameSettings, GameState, Player, RoundResult } from './types/game';
 
@@ -19,6 +27,7 @@ export default function Home() {
   const [lastUpdate, setLastUpdate] = useState(0);
   const [lastRoundNumber, setLastRoundNumber] = useState(0);
   const [lastGuessesLength, setLastGuessesLength] = useState(0);
+  const [isPending, startTransition] = useTransition();
 
   // Générer un ID unique pour le joueur
   useEffect(() => {
@@ -27,76 +36,55 @@ export default function Home() {
     }
   }, [playerId]);
 
-  // Vérifier la santé du serveur
-  const checkServerHealth = async () => {
-    try {
-      const response = await fetch('/api/health');
-      if (!response.ok) {
-        console.error('Server health check failed');
-        return false;
-      }
-      return true;
-    } catch (error) {
-      console.error('Server health check error:', error);
-      return false;
-    }
-  };
-
   // Polling pour mettre à jour l'état du jeu
   useEffect(() => {
     if (!gameId || !isConnected) return;
 
     const pollGameState = async () => {
       try {
-        const response = await fetch(`/api/game?gameId=${gameId}`);
-        if (response.ok) {
-          const game = await response.json();
-          if (game.lastUpdate > lastUpdate) {
-            // Détecter si un défi a été lancé ou une bonne réponse trouvée
-            const roundChanged = game.roundNumber > lastRoundNumber;
-            const guessesReset = game.guesses.length < lastGuessesLength;
+        const game = await getGameState(gameId);
+        if (game && game.lastUpdate > lastUpdate) {
+          // Détecter si un défi a été lancé ou une bonne réponse trouvée
+          const roundChanged = game.roundNumber > lastRoundNumber;
+          const guessesReset = game.guesses.length < lastGuessesLength;
 
-            setGameState(game);
-            setLastUpdate(game.lastUpdate);
-            setLastRoundNumber(game.roundNumber);
-            setLastGuessesLength(game.guesses.length);
+          setGameState(game);
+          setLastUpdate(game.lastUpdate);
+          setLastRoundNumber(game.roundNumber);
+          setLastGuessesLength(game.guesses.length);
 
-            // Si la manche a changé ou les suppositions ont été réinitialisées,
-            // c'est probablement dû à un défi ou une bonne réponse
-            if ((roundChanged || guessesReset) && game.lastUpdate > lastUpdate + 1000) {
-              // Attendre un peu pour s'assurer que le serveur a traité l'action
-              setTimeout(async () => {
-                try {
-                  const resultResponse = await fetch(`/api/game?gameId=${gameId}`);
-                  if (resultResponse.ok) {
-                    const currentGame = await resultResponse.json();
-                    // Si le jeu a un roundResult stocké, l'afficher à tous les joueurs
-                    if (currentGame.lastRoundResult) {
-                      setRoundResult(currentGame.lastRoundResult);
-                    }
-                  }
-                } catch (error) {
-                  console.error('Error fetching round result:', error);
+          // Si la manche a changé ou les suppositions ont été réinitialisées,
+          // c'est probablement dû à un défi ou une bonne réponse
+          if ((roundChanged || guessesReset) && game.lastUpdate > lastUpdate + 1000) {
+            // Attendre un peu pour s'assurer que le serveur a traité l'action
+            setTimeout(async () => {
+              try {
+                const currentGame = await getGameState(gameId);
+                // Si le jeu a un roundResult stocké, l'afficher à tous les joueurs
+                if (currentGame?.lastRoundResult) {
+                  setRoundResult(currentGame.lastRoundResult);
                 }
-              }, 500);
-            }
-
-            // Vérifier aussi si le jeu a un lastRoundResult directement
-            if (game.lastRoundResult && !roundResult) {
-              // Vérifier que ce n'est pas le même résultat que précédemment
-              const currentResultHash = JSON.stringify(game.lastRoundResult);
-              const lastResultHash = localStorage.getItem(`lastResult_${gameId}`);
-
-              if (currentResultHash !== lastResultHash) {
-                setRoundResult(game.lastRoundResult);
-                // Nettoyer le lastRoundResult dans l'état local pour éviter qu'il se réaffiche
-                setGameState({ ...game, lastRoundResult: null });
-                // Stocker le hash du résultat pour éviter les doublons
-                localStorage.setItem(`lastResult_${gameId}`, currentResultHash);
+              } catch (error) {
+                console.error('Error fetching round result:', error);
               }
+            }, 500);
+          }
+
+          // Vérifier aussi si le jeu a un lastRoundResult directement
+          if (game.lastRoundResult && !roundResult) {
+            // Vérifier que ce n'est pas le même résultat que précédemment
+            const currentResultHash = JSON.stringify(game.lastRoundResult);
+            const lastResultHash = localStorage.getItem(`lastResult_${gameId}`);
+
+            if (currentResultHash !== lastResultHash) {
+              setRoundResult(game.lastRoundResult);
+              // Nettoyer le lastRoundResult dans l'état local pour éviter qu'il se réaffiche
+              setGameState({ ...game, lastRoundResult: null });
+              // Stocker le hash du résultat pour éviter les doublons
+              localStorage.setItem(`lastResult_${gameId}`, currentResultHash);
             }
           }
-        } else if (response.status === 404) {
+        } else if (!game) {
           // Le jeu n'existe plus
           console.log('Game not found during polling, redirecting to join screen...');
           alert('La partie a été perdue. Veuillez rejoindre une nouvelle partie.');
@@ -110,101 +98,40 @@ export default function Home() {
       }
     };
 
-    const interval = setInterval(pollGameState, 500); // Poll toutes les 500ms au lieu de 1000ms
+    const interval = setInterval(pollGameState, 500); // Poll toutes les 500ms
     return () => clearInterval(interval);
   }, [gameId, isConnected, lastUpdate, lastRoundNumber, lastGuessesLength]);
 
   const joinGame = async () => {
     if (!playerName.trim() || !gameId.trim()) return;
 
-    // Vérifier la santé du serveur avant de rejoindre
-    const serverHealthy = await checkServerHealth();
-    if (!serverHealthy) {
-      alert('Le serveur ne répond pas. Veuillez réessayer dans quelques instants.');
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/game', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'joinGame',
-          gameId,
-          playerName,
-          playerId
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setGameState(data.game);
-        setLastUpdate(data.game.lastUpdate);
+    startTransition(async () => {
+      try {
+        const result = await joinGameAction(gameId, playerName, playerId);
+        setGameState(result.game);
+        setLastUpdate(result.game.lastUpdate);
         setIsConnected(true);
-      } else {
-        const error = await response.json();
-        alert(error.error);
+      } catch (error) {
+        console.error('Error joining game:', error);
+        alert(error instanceof Error ? error.message : 'Erreur lors de la connexion au jeu');
       }
-    } catch (error) {
-      console.error('Error joining game:', error);
-      alert('Erreur lors de la connexion au jeu');
-    }
+    });
   };
 
   const startGame = async () => {
     if (!gameId || !playerId) return;
 
-    // Vérifier la santé du serveur avant de démarrer
-    const serverHealthy = await checkServerHealth();
-    if (!serverHealthy) {
-      alert('Le serveur ne répond pas. Veuillez réessayer dans quelques instants.');
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/game', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'startGame',
-          gameId,
-          playerId,
-          settings: gameSettings
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setGameState(data.game);
-        setLastUpdate(data.game.lastUpdate);
+    startTransition(async () => {
+      try {
+        const result = await startGameAction(gameId, playerId, gameSettings);
+        setGameState(result.game);
+        setLastUpdate(result.game.lastUpdate);
         console.log('Game started successfully');
-      } else {
-        const error = await response.json();
-
-        // Gérer les différents types d'erreurs
-        if (error.error === 'Game not found') {
-          console.log('Game not found during start, redirecting to join screen...');
-          alert('La partie a été perdue. Veuillez rejoindre une nouvelle partie.');
-          setIsConnected(false);
-          setGameState(null);
-          return;
-        } else if (error.error.includes('Impossible de générer des questions')) {
-          // Erreur de génération de questions, réessayer
-          console.log('Question generation failed, retrying...');
-          alert('Erreur lors de la génération des questions. Veuillez réessayer.');
-          return;
-        } else {
-          alert(error.error);
-        }
+      } catch (error) {
+        console.error('Error starting game:', error);
+        alert(error instanceof Error ? error.message : 'Erreur lors du démarrage du jeu');
       }
-    } catch (error) {
-      console.error('Error starting game:', error);
-      alert('Erreur lors du démarrage du jeu');
-    }
+    });
   };
 
   const submitGuess = async () => {
@@ -222,69 +149,29 @@ export default function Home() {
       return;
     }
 
-    try {
-      const response = await fetch('/api/game', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'submitGuess',
-          gameId,
-          playerId,
-          value
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setGameState(data.game);
-        setLastUpdate(data.game.lastUpdate);
+    startTransition(async () => {
+      try {
+        const result = await submitGuessAction(gameId, playerId, value);
+        setGameState(result.game);
+        setLastUpdate(result.game.lastUpdate);
         setCurrentGuess('');
 
         // Afficher les résultats directement pour le joueur qui lance l'action
-        if (data.exactAnswerFound) {
-          if (data.gameEnded) {
-            alert(`${data.answerFinder.name} a trouvé la bonne réponse ! Il gagne la partie avec un score de ${data.answerFinder.score} !`);
+        if (result.exactAnswerFound) {
+          if (result.gameEnded) {
+            alert(`${result.answerFinder.name} a trouvé la bonne réponse ! Il gagne la partie avec un score de ${result.answerFinder.score} !`);
           } else {
             // Afficher le modal avec les résultats
-            if (data.roundResult) {
-              setRoundResult(data.roundResult);
+            if (result.roundResult) {
+              setRoundResult(result.roundResult);
             }
           }
         }
-      } else {
-        const error = await response.json();
-
-        // Gérer les différents types d'erreurs
-        if (error.error === 'Game not found') {
-          console.log('Game not found, redirecting to join screen...');
-          alert('La partie a été perdue. Veuillez rejoindre une nouvelle partie.');
-          setIsConnected(false);
-          setGameState(null);
-          return;
-        } else if (error.error === 'Game not in playing state') {
-          console.log('Game state mismatch, refreshing...');
-          // Forcer une mise à jour immédiate de l'état du jeu
-          const refreshResponse = await fetch(`/api/game?gameId=${gameId}`);
-          if (refreshResponse.ok) {
-            const refreshedGame = await refreshResponse.json();
-            setGameState(refreshedGame);
-            setLastUpdate(refreshedGame.lastUpdate);
-          } else {
-            // Si même le refresh échoue, rediriger vers l'écran de connexion
-            alert('La partie a été perdue. Veuillez rejoindre une nouvelle partie.');
-            setIsConnected(false);
-            setGameState(null);
-          }
-        } else {
-          alert(error.error);
-        }
+      } catch (error) {
+        console.error('Error submitting guess:', error);
+        alert(error instanceof Error ? error.message : 'Erreur lors de l\'envoi de la supposition');
       }
-    } catch (error) {
-      console.error('Error submitting guess:', error);
-      alert('Erreur lors de l\'envoi de la supposition');
-    }
+    });
   };
 
   const issueChallenge = async (targetPlayerId: string) => {
@@ -296,65 +183,25 @@ export default function Home() {
       return;
     }
 
-    try {
-      const response = await fetch('/api/game', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'issueChallenge',
-          gameId,
-          playerId,
-          targetPlayerId
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setGameState(data.game);
-        setLastUpdate(data.game.lastUpdate);
+    startTransition(async () => {
+      try {
+        const result = await issueChallengeAction(gameId, playerId, targetPlayerId);
+        setGameState(result.game);
+        setLastUpdate(result.game.lastUpdate);
 
         // Afficher les résultats directement pour le joueur qui lance l'action
-        if (data.roundResult) {
-          setRoundResult(data.roundResult);
+        if (result.roundResult) {
+          setRoundResult(result.roundResult);
         }
 
-        if (data.gameEnded) {
-          alert(`Partie terminée ! ${data.winners.map((w: Player) => w.name).join(', ')} ont gagné !`);
+        if (result.gameEnded) {
+          alert(`Partie terminée ! ${result.winners.map((w: Player) => w.name).join(', ')} ont gagné !`);
         }
-      } else {
-        const error = await response.json();
-
-        // Gérer les différents types d'erreurs
-        if (error.error === 'Game not found') {
-          console.log('Game not found during challenge, redirecting to join screen...');
-          alert('La partie a été perdue. Veuillez rejoindre une nouvelle partie.');
-          setIsConnected(false);
-          setGameState(null);
-          return;
-        } else if (error.error === 'Game not in playing state') {
-          console.log('Game state mismatch during challenge, refreshing...');
-          // Forcer une mise à jour immédiate de l'état du jeu
-          const refreshResponse = await fetch(`/api/game?gameId=${gameId}`);
-          if (refreshResponse.ok) {
-            const refreshedGame = await refreshResponse.json();
-            setGameState(refreshedGame);
-            setLastUpdate(refreshedGame.lastUpdate);
-          } else {
-            // Si même le refresh échoue, rediriger vers l'écran de connexion
-            alert('La partie a été perdue. Veuillez rejoindre une nouvelle partie.');
-            setIsConnected(false);
-            setGameState(null);
-          }
-        } else {
-          alert(error.error);
-        }
+      } catch (error) {
+        console.error('Error issuing challenge:', error);
+        alert(error instanceof Error ? error.message : 'Erreur lors du défi');
       }
-    } catch (error) {
-      console.error('Error issuing challenge:', error);
-      alert('Erreur lors du défi');
-    }
+    });
   };
 
   const closeRoundResult = () => {
@@ -371,18 +218,12 @@ export default function Home() {
 
     // Nettoyer le lastRoundResult côté serveur
     if (gameId) {
-      fetch('/api/game', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'clearRoundResult',
-          gameId,
-          playerId
-        }),
-      }).catch(error => {
-        console.error('Error clearing round result:', error);
+      startTransition(async () => {
+        try {
+          await clearRoundResultAction(gameId);
+        } catch (error) {
+          console.error('Error clearing round result:', error);
+        }
       });
     }
   };
