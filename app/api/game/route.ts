@@ -61,46 +61,71 @@ function getRandomQuestion(gameQuestions: Question[], usedQuestionIds: string[] 
 }
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const gameId = searchParams.get('gameId');
-  
-  if (!gameId) {
-    return NextResponse.json({ error: 'Game ID required' }, { status: 400 });
+  try {
+    console.log('GET /api/game called');
+    
+    const { searchParams } = new URL(req.url);
+    const gameId = searchParams.get('gameId');
+    
+    console.log(`Game ID from params: ${gameId}`);
+    
+    if (!gameId) {
+      console.log('No game ID provided');
+      return NextResponse.json({ error: 'Game ID required' }, { status: 400 });
+    }
+
+    console.log(`GET request for game: ${gameId}`);
+    console.log(`Available games: ${Array.from(games.keys()).join(', ')}`);
+
+    const game = games.get(gameId);
+    if (!game) {
+      console.log(`Game not found: ${gameId}`);
+      return NextResponse.json({ error: 'Game not found' }, { status: 404 });
+    }
+
+    console.log(`Game found: ${gameId}, returning game data`);
+    return NextResponse.json(game);
+  } catch (error) {
+    console.error('Error in GET /api/game:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
-
-  console.log(`GET request for game: ${gameId}`);
-  console.log(`Available games: ${Array.from(games.keys()).join(', ')}`);
-
-  const game = games.get(gameId);
-  if (!game) {
-    console.log(`Game not found: ${gameId}`);
-    return NextResponse.json({ error: 'Game not found' }, { status: 404 });
-  }
-
-  return NextResponse.json(game);
 }
 
 export async function POST(req: NextRequest) {
-  const body = await req.json();
-  const { action, gameId, playerName, playerId, value, targetPlayerId, settings } = body;
+  try {
+    console.log('POST /api/game called');
+    
+    const body = await req.json();
+    const { action, gameId, playerName, playerId, value, targetPlayerId, settings } = body;
 
-  console.log(`POST request - Action: ${action}, GameId: ${gameId}`);
+    console.log(`POST request - Action: ${action}, GameId: ${gameId}`);
 
-  switch (action) {
-    case 'joinGame':
-      return handleJoinGame(gameId, playerName, playerId);
-    case 'startGame':
-      return await handleStartGame(gameId, playerId, settings);
-    case 'submitGuess':
-      return handleSubmitGuess(gameId, playerId, value);
-    case 'issueChallenge':
-      return handleIssueChallenge(gameId, playerId, targetPlayerId);
-    case 'nextQuestion':
-      return handleNextQuestion(gameId, playerId);
-    case 'clearRoundResult':
-      return handleClearRoundResult(gameId);
-    default:
-      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    switch (action) {
+      case 'joinGame':
+        return handleJoinGame(gameId, playerName, playerId);
+      case 'startGame':
+        return await handleStartGame(gameId, playerId, settings);
+      case 'submitGuess':
+        return handleSubmitGuess(gameId, playerId, value);
+      case 'issueChallenge':
+        return handleIssueChallenge(gameId, playerId, targetPlayerId);
+      case 'nextQuestion':
+        return handleNextQuestion(gameId, playerId);
+      case 'clearRoundResult':
+        return handleClearRoundResult(gameId);
+      default:
+        console.log(`Invalid action: ${action}`);
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
+  } catch (error) {
+    console.error('Error in POST /api/game:', error);
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
 
