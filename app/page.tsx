@@ -1,12 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
 import RoundResultModal from './components/RoundResult';
-import { GameSettings, GameState, Guess, Question, RoundResult } from './types/game';
+import { GameSettings, GameState, Player, RoundResult } from './types/game';
 
 export default function Home() {
-  const [socket, setSocket] = useState<Socket | null>(null);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [playerName, setPlayerName] = useState('');
   const [gameId, setGameId] = useState('');
@@ -18,65 +16,105 @@ export default function Home() {
     maxScore: 3,
     gameMode: 'classic'
   });
+  const [playerId, setPlayerId] = useState('');
+  const [lastUpdate, setLastUpdate] = useState(0);
 
+  // Générer un ID unique pour le joueur
   useEffect(() => {
-    const newSocket = io('http://localhost:3001');
-    setSocket(newSocket);
+    if (!playerId) {
+      setPlayerId(Math.random().toString(36).substr(2, 9));
+    }
+  }, [playerId]);
 
-    newSocket.on('connect', () => {
-      setIsConnected(true);
-      console.log('Connected to server');
-    });
+  // Polling pour mettre à jour l'état du jeu
+  useEffect(() => {
+    if (!gameId || !isConnected) return;
 
-    newSocket.on('disconnect', () => {
-      setIsConnected(false);
-      console.log('Disconnected from server');
-    });
-
-    newSocket.on('gameStateUpdate', (state: GameState) => {
-      setGameState(state);
-    });
-
-    newSocket.on('newQuestion', (question: Question) => {
-      console.log('New question:', question);
-    });
-
-    newSocket.on('guessSubmitted', (guess: Guess) => {
-      console.log('Guess submitted:', guess);
-    });
-
-    newSocket.on('roundEnded', (results: RoundResult) => {
-      console.log('Round ended:', results);
-      setRoundResult(results);
-    });
-
-    newSocket.on('gameEnded', (winners) => {
-      console.log('Game ended, winners:', winners);
-    });
-
-    newSocket.on('error', (message: string) => {
-      alert(message);
-    });
-
-    return () => {
-      newSocket.close();
+    const pollGameState = async () => {
+      try {
+        const response = await fetch(`/api/game?gameId=${gameId}`);
+        if (response.ok) {
+          const game = await response.json();
+          if (game.lastUpdate > lastUpdate) {
+            setGameState(game);
+            setLastUpdate(game.lastUpdate);
+          }
+        }
+      } catch (error) {
+        console.error('Error polling game state:', error);
+      }
     };
-  }, []);
 
-  const joinGame = () => {
-    if (!socket || !playerName.trim() || !gameId.trim()) return;
+    const interval = setInterval(pollGameState, 1000); // Poll toutes les secondes
+    return () => clearInterval(interval);
+  }, [gameId, isConnected, lastUpdate]);
 
-    socket.emit('joinGame', gameId, playerName);
-    setShowJoinForm(false);
+  const joinGame = async () => {
+    if (!playerName.trim() || !gameId.trim()) return;
+
+    try {
+      const response = await fetch('/api/game', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'joinGame',
+          gameId,
+          playerName,
+          playerId
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setGameState(data.game);
+        setLastUpdate(data.game.lastUpdate);
+        setIsConnected(true);
+        setShowJoinForm(false);
+      } else {
+        const error = await response.json();
+        alert(error.error);
+      }
+    } catch (error) {
+      console.error('Error joining game:', error);
+      alert('Erreur lors de la connexion au jeu');
+    }
   };
 
-  const startGame = () => {
-    if (!socket) return;
-    socket.emit('startGame', gameSettings);
+  const startGame = async () => {
+    if (!gameId || !playerId) return;
+
+    try {
+      const response = await fetch('/api/game', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'startGame',
+          gameId,
+          playerId,
+          settings: gameSettings
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setGameState(data.game);
+        setLastUpdate(data.game.lastUpdate);
+      } else {
+        const error = await response.json();
+        alert(error.error);
+      }
+    } catch (error) {
+      console.error('Error starting game:', error);
+      alert('Erreur lors du démarrage du jeu');
+    }
   };
 
-  const submitGuess = () => {
-    if (!socket || !currentGuess) return;
+  const submitGuess = async () => {
+    if (!gameId || !playerId || !currentGuess) return;
 
     const value = parseInt(currentGuess);
     if (isNaN(value) || value <= 0) {
@@ -84,32 +122,105 @@ export default function Home() {
       return;
     }
 
-    socket.emit('submitGuess', value);
-    setCurrentGuess('');
+    try {
+      const response = await fetch('/api/game', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'submitGuess',
+          gameId,
+          playerId,
+          value
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setGameState(data.game);
+        setLastUpdate(data.game.lastUpdate);
+        setCurrentGuess('');
+      } else {
+        const error = await response.json();
+        alert(error.error);
+      }
+    } catch (error) {
+      console.error('Error submitting guess:', error);
+      alert('Erreur lors de l\'envoi de la supposition');
+    }
   };
 
-  const issueChallenge = (targetPlayerId: string) => {
-    if (!socket) return;
-    socket.emit('issueChallenge', targetPlayerId);
+  const issueChallenge = async (targetPlayerId: string) => {
+    if (!gameId || !playerId) return;
+
+    try {
+      const response = await fetch('/api/game', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'issueChallenge',
+          gameId,
+          playerId,
+          targetPlayerId
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setGameState(data.game);
+        setLastUpdate(data.game.lastUpdate);
+
+        if (data.roundResult) {
+          setRoundResult(data.roundResult);
+        }
+
+        if (data.gameEnded) {
+          alert(`Partie terminée ! ${data.winners.map((w: Player) => w.name).join(', ')} ont gagné !`);
+        }
+      } else {
+        const error = await response.json();
+        alert(error.error);
+      }
+    } catch (error) {
+      console.error('Error issuing challenge:', error);
+      alert('Erreur lors du défi');
+    }
   };
 
-  const nextQuestion = () => {
-    if (!socket) return;
-    socket.emit('nextQuestion');
+  const nextQuestion = async () => {
+    if (!gameId || !playerId) return;
+
+    try {
+      const response = await fetch('/api/game', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          action: 'nextQuestion',
+          gameId,
+          playerId
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setGameState(data.game);
+        setLastUpdate(data.game.lastUpdate);
+      } else {
+        const error = await response.json();
+        alert(error.error);
+      }
+    } catch (error) {
+      console.error('Error starting next question:', error);
+      alert('Erreur lors du passage à la question suivante');
+    }
   };
 
   if (!isConnected) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Connexion au serveur...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (showJoinForm) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
         <div className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
@@ -169,9 +280,9 @@ export default function Home() {
     );
   }
 
-  const currentPlayer = gameState.players.find(p => p.id === socket?.id);
+  const currentPlayer = gameState.players.find(p => p.id === playerId);
   const isHost = currentPlayer?.isHost;
-  const isMyTurn = gameState.currentTurnPlayerId === socket?.id;
+  const isMyTurn = gameState.currentTurnPlayerId === playerId;
   const currentTurnPlayer = gameState.players.find(p => p.id === gameState.currentTurnPlayerId);
 
   return (
@@ -200,7 +311,7 @@ export default function Home() {
                 {gameState.players.map((player) => (
                   <div
                     key={player.id}
-                    className={`flex justify-between items-center p-3 rounded-lg ${player.id === socket?.id ? 'bg-indigo-50 border border-indigo-200' : 'bg-gray-50'
+                    className={`flex justify-between items-center p-3 rounded-lg ${player.id === playerId ? 'bg-indigo-50 border border-indigo-200' : 'bg-gray-50'
                       } ${player.id === gameState.currentTurnPlayerId ? 'ring-2 ring-green-500' : ''
                       }`}
                   >
@@ -302,7 +413,7 @@ export default function Home() {
                   {/* Zone de saisie */}
                   {currentPlayer && (
                     <div className="space-y-4">
-                      {isMyTurn && gameState.currentTurnPlayerId ? (
+                      {isMyTurn ? (
                         <div className="flex space-x-2">
                           <input
                             type="number"
@@ -321,11 +432,7 @@ export default function Home() {
                         </div>
                       ) : (
                         <div className="text-center py-4">
-                          {gameState.currentTurnPlayerId && currentTurnPlayer ? (
-                            <p className="text-gray-600">En attente du tour de {currentTurnPlayer.name}...</p>
-                          ) : (
-                            <p className="text-gray-600">En attente du début de la partie...</p>
-                          )}
+                          <p className="text-gray-600">En attente du tour de {currentTurnPlayer?.name}...</p>
                         </div>
                       )}
 
@@ -333,7 +440,7 @@ export default function Home() {
                       {gameState.guesses.length > 0 && (
                         <div className="flex flex-wrap gap-2">
                           {gameState.players.map((player) => {
-                            if (player.id === socket?.id) return null;
+                            if (player.id === playerId) return null;
                             const lastGuess = gameState.guesses[gameState.guesses.length - 1];
                             if (lastGuess && lastGuess.playerId === player.id) {
                               return (

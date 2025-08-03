@@ -1,10 +1,12 @@
-# Là t'abuses! - Jeu d'apéro multijoueur
+# Là t'abuses! 🎮
 
-Un jeu d'apéro amusant où vous devez deviner des chiffres sans aller trop haut ! Basé sur le jeu de société "Là t'abuses!", cette version web permet de jouer en temps réel avec vos amis.
+Un jeu d'apéro multijoueur en ligne où vous devez deviner des chiffres sans aller trop haut !
 
-## 🎮 Règles du jeu
+## 🎯 Règles du jeu
 
-### Règles classiques
+**Là t'abuses!** est un jeu de société d'ambiance super flexible où vous devinez des chiffres sans aller trop haut.
+
+### Comment jouer :
 1. Un joueur lit une question (toutes les réponses sont des chiffres)
 2. Le joueur actif doit deviner un nombre proche – mais pas supérieur – de la bonne réponse
 3. À tour de rôle, les joueurs font une supposition supérieure à celle du joueur précédent
@@ -12,104 +14,123 @@ Un jeu d'apéro amusant où vous devez deviner des chiffres sans aller trop haut
 5. Lorsqu'un défi est annoncé, la réponse est vérifiée
 6. Le joueur qui s'est trompé doit conserver la carte pour les points "Imbécile"
 7. Une fois qu'un joueur a collecté un certain nombre de cartes, la partie se termine
-8. Le joueur avec le plus de points "Imbécile" perd et tous les autres joueurs gagnent
+8. Le joueur avec le plus de points "Imbécile" perd et tous les autres joueurs gagnent !
 
-## 🚀 Installation et démarrage
+## 🚀 Déploiement
+
+Ce jeu est conçu pour être déployé sur **Vercel** en un seul clic !
+
+### ✅ Compatible Vercel
+- ✅ **Aucun serveur séparé** nécessaire
+- ✅ **API Routes Next.js** pour la logique de jeu
+- ✅ **Polling intelligent** pour les mises à jour en temps réel
+- ✅ **Stockage en mémoire** pour les parties actives
+- ✅ **Déploiement automatique** depuis GitHub
+
+## 🛠️ Technologies
+
+- **Frontend** : Next.js 15, React 19, TypeScript
+- **Styling** : Tailwind CSS
+- **Backend** : Next.js API Routes
+- **Communication** : REST API avec polling
+- **Déploiement** : Vercel
+
+## 🎮 Fonctionnalités
+
+- ✅ **Multijoueur en ligne** - Jouez avec vos amis depuis n'importe quel navigateur
+- ✅ **Tours de jeu** - Chaque joueur joue à son tour dans l'ordre
+- ✅ **Système de défis** - Lancez "Là t'abuses!" pour défier les autres
+- ✅ **Interface moderne** - Design responsive avec Tailwind CSS
+- ✅ **Gestion des parties** - Créez et rejoignez des parties avec un code
+- ✅ **Scores en temps réel** - Suivez les points "Imbécile" de chaque joueur
+- ✅ **Questions variées** - 15 questions dans différentes catégories
+
+## 🚀 Installation et développement
 
 ### Prérequis
-- Node.js (version 18 ou supérieure)
+- Node.js 18+ 
 - npm ou yarn
 
 ### Installation
 ```bash
 # Cloner le repository
-git clone <repository-url>
+git clone <votre-repo>
 cd la-t-abuses
 
 # Installer les dépendances
 npm install
-```
 
-### Démarrage
-```bash
-# Démarrer l'application Next.js
+# Lancer en mode développement
 npm run dev
 ```
 
-L'application sera accessible sur `http://localhost:3000`
+### Déploiement sur Vercel
+1. Poussez votre code sur GitHub
+2. Connectez votre repository à Vercel
+3. Déployez automatiquement !
 
 ## 🎯 Comment jouer
 
-1. **Rejoindre une partie** :
-   - Entrez votre nom
-   - Entrez le code de la partie (ou créez-en un nouveau)
-   - Cliquez sur "Rejoindre la partie"
+1. **Rejoindre une partie** : Entrez votre nom et le code de la partie
+2. **Attendre les joueurs** : Partagez le code avec vos amis
+3. **Commencer** : L'hôte lance la partie quand tout le monde est prêt
+4. **Jouer** : Devinez des chiffres à votre tour ou défiez les autres
+5. **Gagner** : Évitez d'avoir le plus de points "Imbécile" !
 
-2. **Créer une partie** :
-   - Le premier joueur à rejoindre devient l'hôte
-   - L'hôte peut configurer le score maximum pour perdre
-   - Cliquez sur "Commencer la partie" quand tous les joueurs sont prêts
+## 🏗️ Architecture
 
-3. **Pendant le jeu** :
-   - Lisez la question affichée
-   - Entrez votre supposition (doit être supérieure à la précédente)
-   - Ou cliquez sur "Là t'abuses!" pour défier le joueur précédent
-
-4. **Fin de partie** :
-   - Le premier joueur à atteindre le score maximum perd
-   - Tous les autres joueurs gagnent !
-
-## 🛠️ Technologies utilisées
-
-- **Frontend** : Next.js 15, React 19, TypeScript
-- **Styling** : Tailwind CSS
-- **Architecture** : Application monolithique compatible Vercel
-
-## 📁 Structure du projet
-
+### Structure du projet
 ```
 la-t-abuses/
 ├── app/
+│   ├── api/game/route.ts    # API Routes pour la logique de jeu
 │   ├── components/          # Composants React
 │   ├── types/              # Types TypeScript
-│   ├── data/               # Données du jeu (questions)
-│   └── page.tsx            # Page principale
-├── server.js               # Serveur WebSocket
+│   ├── page.tsx            # Page principale
+│   └── globals.css         # Styles globaux
 ├── package.json
 └── README.md
 ```
 
-## 🎨 Fonctionnalités
+### API Routes
+- `GET /api/game?gameId=xxx` - Récupérer l'état d'une partie
+- `POST /api/game` - Actions de jeu (rejoindre, jouer, défier, etc.)
 
-- ✅ Multijoueur local (même navigateur)
-- ✅ Interface moderne et responsive
-- ✅ Gestion des salles de jeu
-- ✅ Système de points
-- ✅ Questions variées par catégorie
-- ✅ Modal de résultats de manche
-- ✅ Compatible Vercel (déploiement simple)
+### Polling intelligent
+- Mise à jour automatique toutes les secondes
+- Optimisation pour éviter les requêtes inutiles
+- Gestion des erreurs et reconnexion automatique
+
+## 🎨 Design
+
+- **Interface moderne** avec Tailwind CSS
+- **Responsive** pour mobile et desktop
+- **Animations** pour une meilleure expérience utilisateur
+- **Couleurs** : Thème indigo/bleu pour un look professionnel
 
 ## 🔧 Configuration
 
 ### Variables d'environnement
-Aucune variable d'environnement requise pour le déploiement sur Vercel.
+Aucune configuration spéciale nécessaire pour Vercel !
 
 ### Personnalisation
-- Modifiez les questions dans `app/data/questions.ts`
+- Modifiez les questions dans `app/api/game/route.ts`
 - Ajustez les styles dans `app/globals.css`
-- Configurez le serveur WebSocket dans `server.js`
+- Personnalisez les règles dans la logique de jeu
 
-## 🤝 Contribution
+## 🐛 Dépannage
 
-Les contributions sont les bienvenues ! N'hésitez pas à :
-- Signaler des bugs
-- Proposer de nouvelles fonctionnalités
-- Ajouter de nouvelles questions
-- Améliorer l'interface utilisateur
+### Problèmes courants
+- **Connexion échouée** : Vérifiez que l'URL est correcte
+- **Partie non trouvée** : Vérifiez le code de la partie
+- **Joueur déjà existant** : Utilisez un nom différent
 
-## 📄 Licence
+### Logs
+Les erreurs sont affichées dans la console du navigateur et dans les logs Vercel.
 
-Ce projet est sous licence MIT.
+## 📝 Licence
+
+Ce projet est open source. N'hésitez pas à contribuer !
 
 ---
 
