@@ -16,6 +16,7 @@ export interface GameState {
   guesses: Guess[];
   maxScore: number;
   roundNumber: number;
+  lastUpdate: number;
 }
 
 export interface Question {

@@ -10,7 +10,6 @@ export default function Home() {
   const [gameId, setGameId] = useState('');
   const [currentGuess, setCurrentGuess] = useState('');
   const [isConnected, setIsConnected] = useState(false);
-  const [showJoinForm, setShowJoinForm] = useState(true);
   const [roundResult, setRoundResult] = useState<RoundResult | null>(null);
   const [gameSettings, setGameSettings] = useState<GameSettings>({
     maxScore: 3,
@@ -71,7 +70,6 @@ export default function Home() {
         setGameState(data.game);
         setLastUpdate(data.game.lastUpdate);
         setIsConnected(true);
-        setShowJoinForm(false);
       } else {
         const error = await response.json();
         alert(error.error);
@@ -187,36 +185,6 @@ export default function Home() {
     } catch (error) {
       console.error('Error issuing challenge:', error);
       alert('Erreur lors du défi');
-    }
-  };
-
-  const nextQuestion = async () => {
-    if (!gameId || !playerId) return;
-
-    try {
-      const response = await fetch('/api/game', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'nextQuestion',
-          gameId,
-          playerId
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setGameState(data.game);
-        setLastUpdate(data.game.lastUpdate);
-      } else {
-        const error = await response.json();
-        alert(error.error);
-      }
-    } catch (error) {
-      console.error('Error starting next question:', error);
-      alert('Erreur lors du passage à la question suivante');
     }
   };
 

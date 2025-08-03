@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { GameState, Player, RoundResult } from '../../types/game';
 
 // Stockage global des jeux (en mémoire pour Vercel)
-const games = new Map();
+const games = new Map<string, GameState>();
 
 // Questions du jeu
 const questions = [
@@ -83,12 +84,12 @@ function handleJoinGame(gameId: string, playerName: string, playerId: string) {
   }
 
   // Vérifier si le nom existe déjà
-  const existingPlayer = game.players.find((p: any) => p.name === playerName);
+  const existingPlayer = game.players.find((p: Player) => p.name === playerName);
   if (existingPlayer) {
     return NextResponse.json({ error: 'Un joueur avec ce nom existe déjà dans la partie' }, { status: 400 });
   }
 
-  const player = {
+  const player: Player = {
     id: playerId,
     name: playerName,
     score: 0,
@@ -102,14 +103,14 @@ function handleJoinGame(gameId: string, playerName: string, playerId: string) {
   return NextResponse.json({ success: true, game });
 }
 
-function handleStartGame(gameId: string, playerId: string, settings: any) {
+function handleStartGame(gameId: string, playerId: string, settings: { maxScore: number }) {
   const game = games.get(gameId);
   
   if (!game) {
     return NextResponse.json({ error: 'Game not found' }, { status: 404 });
   }
 
-  const player = game.players.find((p: any) => p.id === playerId);
+  const player = game.players.find((p: Player) => p.id === playerId);
   if (!player?.isHost) {
     return NextResponse.json({ error: 'Only host can start game' }, { status: 403 });
   }
@@ -131,7 +132,7 @@ function handleSubmitGuess(gameId: string, playerId: string, value: number) {
     return NextResponse.json({ error: 'Game not in playing state' }, { status: 400 });
   }
 
-  const player = game.players.find((p: any) => p.id === playerId);
+  const player = game.players.find((p: Player) => p.id === playerId);
   if (!player) {
     return NextResponse.json({ error: 'Player not found' }, { status: 404 });
   }
@@ -156,7 +157,7 @@ function handleSubmitGuess(gameId: string, playerId: string, value: number) {
   game.guesses.push(guess);
   
   // Passer au joueur suivant
-  const currentPlayerIndex = game.players.findIndex((p: any) => p.id === playerId);
+  const currentPlayerIndex = game.players.findIndex((p: Player) => p.id === playerId);
   const nextPlayerIndex = (currentPlayerIndex + 1) % game.players.length;
   game.currentTurnPlayerId = game.players[nextPlayerIndex].id;
   game.lastUpdate = Date.now();
@@ -171,8 +172,8 @@ function handleIssueChallenge(gameId: string, playerId: string, targetPlayerId: 
     return NextResponse.json({ error: 'Game not in playing state' }, { status: 400 });
   }
 
-  const challenger = game.players.find((p: any) => p.id === playerId);
-  const challenged = game.players.find((p: any) => p.id === targetPlayerId);
+  const challenger = game.players.find((p: Player) => p.id === playerId);
+  const challenged = game.players.find((p: Player) => p.id === targetPlayerId);
   
   if (!challenger || !challenged) {
     return NextResponse.json({ error: 'Player not found' }, { status: 404 });
@@ -189,7 +190,7 @@ function handleIssueChallenge(gameId: string, playerId: string, targetPlayerId: 
   
   loser.score++;
 
-  const roundResult = {
+  const roundResult: RoundResult = {
     correctAnswer: game.currentQuestion.answer,
     guesses: [...game.guesses],
     loser,
@@ -199,7 +200,7 @@ function handleIssueChallenge(gameId: string, playerId: string, targetPlayerId: 
 
   // Vérifier si le jeu est terminé
   if (loser.score >= game.maxScore) {
-    const winners = game.players.filter((p: any) => p.id !== loser.id);
+    const winners = game.players.filter((p: Player) => p.id !== loser.id);
     game.gamePhase = 'finished';
     game.lastUpdate = Date.now();
     return NextResponse.json({ success: true, game, roundResult, gameEnded: true, winners });
@@ -221,7 +222,7 @@ function handleNextQuestion(gameId: string, playerId: string) {
     return NextResponse.json({ error: 'Game not found' }, { status: 404 });
   }
 
-  const player = game.players.find((p: any) => p.id === playerId);
+  const player = game.players.find((p: Player) => p.id === playerId);
   if (!player?.isHost) {
     return NextResponse.json({ error: 'Only host can start new question' }, { status: 403 });
   }
