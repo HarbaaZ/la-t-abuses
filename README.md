@@ -1,36 +1,116 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Là t'abuses! - Jeu d'apéro multijoueur
 
-## Getting Started
+Un jeu d'apéro amusant où vous devez deviner des chiffres sans aller trop haut ! Basé sur le jeu de société "Là t'abuses!", cette version web permet de jouer en temps réel avec vos amis.
 
-First, run the development server:
+## 🎮 Règles du jeu
 
+### Règles classiques
+1. Un joueur lit une question (toutes les réponses sont des chiffres)
+2. Le joueur actif doit deviner un nombre proche – mais pas supérieur – de la bonne réponse
+3. À tour de rôle, les joueurs font une supposition supérieure à celle du joueur précédent
+4. Ou lancent un "Là t'abuses!" s'ils pensent que le joueur précédent a deviné trop élevé
+5. Lorsqu'un défi est annoncé, la réponse est vérifiée
+6. Le joueur qui s'est trompé doit conserver la carte pour les points "Imbécile"
+7. Une fois qu'un joueur a collecté un certain nombre de cartes, la partie se termine
+8. Le joueur avec le plus de points "Imbécile" perd et tous les autres joueurs gagnent
+
+## 🚀 Installation et démarrage
+
+### Prérequis
+- Node.js (version 18 ou supérieure)
+- npm ou yarn
+
+### Installation
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Cloner le repository
+git clone <repository-url>
+cd la-t-abuses
+
+# Installer les dépendances
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Démarrage
+```bash
+# Démarrer l'application Next.js
+npm run dev
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+L'application sera accessible sur `http://localhost:3000`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🎯 Comment jouer
 
-## Learn More
+1. **Rejoindre une partie** :
+   - Entrez votre nom
+   - Entrez le code de la partie (ou créez-en un nouveau)
+   - Cliquez sur "Rejoindre la partie"
 
-To learn more about Next.js, take a look at the following resources:
+2. **Créer une partie** :
+   - Le premier joueur à rejoindre devient l'hôte
+   - L'hôte peut configurer le score maximum pour perdre
+   - Cliquez sur "Commencer la partie" quand tous les joueurs sont prêts
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+3. **Pendant le jeu** :
+   - Lisez la question affichée
+   - Entrez votre supposition (doit être supérieure à la précédente)
+   - Ou cliquez sur "Là t'abuses!" pour défier le joueur précédent
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+4. **Fin de partie** :
+   - Le premier joueur à atteindre le score maximum perd
+   - Tous les autres joueurs gagnent !
 
-## Deploy on Vercel
+## 🛠️ Technologies utilisées
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Frontend** : Next.js 15, React 19, TypeScript
+- **Styling** : Tailwind CSS
+- **Architecture** : Application monolithique compatible Vercel
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 📁 Structure du projet
+
+```
+la-t-abuses/
+├── app/
+│   ├── components/          # Composants React
+│   ├── types/              # Types TypeScript
+│   ├── data/               # Données du jeu (questions)
+│   └── page.tsx            # Page principale
+├── server.js               # Serveur WebSocket
+├── package.json
+└── README.md
+```
+
+## 🎨 Fonctionnalités
+
+- ✅ Multijoueur local (même navigateur)
+- ✅ Interface moderne et responsive
+- ✅ Gestion des salles de jeu
+- ✅ Système de points
+- ✅ Questions variées par catégorie
+- ✅ Modal de résultats de manche
+- ✅ Compatible Vercel (déploiement simple)
+
+## 🔧 Configuration
+
+### Variables d'environnement
+Aucune variable d'environnement requise pour le déploiement sur Vercel.
+
+### Personnalisation
+- Modifiez les questions dans `app/data/questions.ts`
+- Ajustez les styles dans `app/globals.css`
+- Configurez le serveur WebSocket dans `server.js`
+
+## 🤝 Contribution
+
+Les contributions sont les bienvenues ! N'hésitez pas à :
+- Signaler des bugs
+- Proposer de nouvelles fonctionnalités
+- Ajouter de nouvelles questions
+- Améliorer l'interface utilisateur
+
+## 📄 Licence
+
+Ce projet est sous licence MIT.
+
+---
+
+**Amusez-vous bien avec Là t'abuses! 🎉**
