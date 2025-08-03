@@ -10,6 +10,8 @@ import {
   submitGuess as submitGuessAction
 } from './actions/game';
 import RoundResultModal from './components/RoundResult';
+import { debounce } from './lib/debounce';
+import { clearCache, shouldPoll, updateCache } from './lib/polling';
 import { GameSettings, GameState, Player, RoundResult } from './types/game';
 
 export default function Home() {
@@ -41,6 +43,11 @@ export default function Home() {
     if (!gameId || !isConnected) return;
 
     const pollGameState = async () => {
+      // Vérifier si on doit vraiment poller
+      if (!shouldPoll(gameId, lastUpdate)) {
+        return;
+      }
+
       try {
         const game = await getGameState(gameId);
         if (game && game.lastUpdate > lastUpdate) {
@@ -53,24 +60,10 @@ export default function Home() {
           setLastRoundNumber(game.roundNumber);
           setLastGuessesLength(game.guesses.length);
 
-          // Si la manche a changé ou les suppositions ont été réinitialisées,
-          // c'est probablement dû à un défi ou une bonne réponse
-          if ((roundChanged || guessesReset) && game.lastUpdate > lastUpdate + 1000) {
-            // Attendre un peu pour s'assurer que le serveur a traité l'action
-            setTimeout(async () => {
-              try {
-                const currentGame = await getGameState(gameId);
-                // Si le jeu a un roundResult stocké, l'afficher à tous les joueurs
-                if (currentGame?.lastRoundResult) {
-                  setRoundResult(currentGame.lastRoundResult);
-                }
-              } catch (error) {
-                console.error('Error fetching round result:', error);
-              }
-            }, 500);
-          }
+          // Mettre à jour le cache
+          updateCache(gameId, game);
 
-          // Vérifier aussi si le jeu a un lastRoundResult directement
+          // Vérifier si le jeu a un lastRoundResult directement
           if (game.lastRoundResult && !roundResult) {
             // Vérifier que ce n'est pas le même résultat que précédemment
             const currentResultHash = JSON.stringify(game.lastRoundResult);
@@ -90,6 +83,7 @@ export default function Home() {
           alert('La partie a été perdue. Veuillez rejoindre une nouvelle partie.');
           setIsConnected(false);
           setGameState(null);
+          clearCache(gameId);
         }
       } catch (error) {
         console.error('Error polling game state:', error);
@@ -98,9 +92,11 @@ export default function Home() {
       }
     };
 
-    const interval = setInterval(pollGameState, 500); // Poll toutes les 500ms
+    // Polling plus lent si le jeu est en attente
+    const pollingInterval = gameState?.gamePhase === 'waiting' ? 5000 : 2000;
+    const interval = setInterval(pollGameState, pollingInterval);
     return () => clearInterval(interval);
-  }, [gameId, isConnected, lastUpdate, lastRoundNumber, lastGuessesLength]);
+  }, [gameId, isConnected, lastUpdate, lastRoundNumber, lastGuessesLength, roundResult, gameState?.gamePhase]);
 
   const joinGame = async () => {
     if (!playerName.trim() || !gameId.trim()) return;
@@ -111,6 +107,7 @@ export default function Home() {
         setGameState(result.game);
         setLastUpdate(result.game.lastUpdate);
         setIsConnected(true);
+        clearCache(gameId); // Nettoyer le cache pour forcer un premier poll
       } catch (error) {
         console.error('Error joining game:', error);
         alert(error instanceof Error ? error.message : 'Erreur lors de la connexion au jeu');
@@ -149,29 +146,34 @@ export default function Home() {
       return;
     }
 
-    startTransition(async () => {
-      try {
-        const result = await submitGuessAction(gameId, playerId, value);
-        setGameState(result.game);
-        setLastUpdate(result.game.lastUpdate);
-        setCurrentGuess('');
+    // Debounce pour éviter les soumissions multiples
+    const debouncedSubmit = debounce(`submit_${playerId}`, async () => {
+      startTransition(async () => {
+        try {
+          const result = await submitGuessAction(gameId, playerId, value);
+          setGameState(result.game);
+          setLastUpdate(result.game.lastUpdate);
+          setCurrentGuess('');
 
-        // Afficher les résultats directement pour le joueur qui lance l'action
-        if (result.exactAnswerFound) {
-          if (result.gameEnded) {
-            alert(`${result.answerFinder.name} a trouvé la bonne réponse ! Il gagne la partie avec un score de ${result.answerFinder.score} !`);
-          } else {
-            // Afficher le modal avec les résultats
-            if (result.roundResult) {
-              setRoundResult(result.roundResult);
+          // Afficher les résultats directement pour le joueur qui lance l'action
+          if (result.exactAnswerFound) {
+            if (result.gameEnded) {
+              alert(`${result.answerFinder.name} a trouvé la bonne réponse ! Il gagne la partie avec un score de ${result.answerFinder.score} !`);
+            } else {
+              // Afficher le modal avec les résultats
+              if (result.roundResult) {
+                setRoundResult(result.roundResult);
+              }
             }
           }
+        } catch (error) {
+          console.error('Error submitting guess:', error);
+          alert(error instanceof Error ? error.message : 'Erreur lors de l\'envoi de la supposition');
         }
-      } catch (error) {
-        console.error('Error submitting guess:', error);
-        alert(error instanceof Error ? error.message : 'Erreur lors de l\'envoi de la supposition');
-      }
-    });
+      });
+    }, 500);
+
+    debouncedSubmit();
   };
 
   const issueChallenge = async (targetPlayerId: string) => {
@@ -183,25 +185,30 @@ export default function Home() {
       return;
     }
 
-    startTransition(async () => {
-      try {
-        const result = await issueChallengeAction(gameId, playerId, targetPlayerId);
-        setGameState(result.game);
-        setLastUpdate(result.game.lastUpdate);
+    // Debounce pour éviter les défis multiples
+    const debouncedChallenge = debounce(`challenge_${playerId}_${targetPlayerId}`, async () => {
+      startTransition(async () => {
+        try {
+          const result = await issueChallengeAction(gameId, playerId, targetPlayerId);
+          setGameState(result.game);
+          setLastUpdate(result.game.lastUpdate);
 
-        // Afficher les résultats directement pour le joueur qui lance l'action
-        if (result.roundResult) {
-          setRoundResult(result.roundResult);
-        }
+          // Afficher les résultats directement pour le joueur qui lance l'action
+          if (result.roundResult) {
+            setRoundResult(result.roundResult);
+          }
 
-        if (result.gameEnded) {
-          alert(`Partie terminée ! ${result.winners.map((w: Player) => w.name).join(', ')} ont gagné !`);
+          if (result.gameEnded) {
+            alert(`Partie terminée ! ${result.winners.map((w: Player) => w.name).join(', ')} ont gagné !`);
+          }
+        } catch (error) {
+          console.error('Error issuing challenge:', error);
+          alert(error instanceof Error ? error.message : 'Erreur lors du défi');
         }
-      } catch (error) {
-        console.error('Error issuing challenge:', error);
-        alert(error instanceof Error ? error.message : 'Erreur lors du défi');
-      }
-    });
+      });
+    }, 500);
+
+    debouncedChallenge();
   };
 
   const closeRoundResult = () => {

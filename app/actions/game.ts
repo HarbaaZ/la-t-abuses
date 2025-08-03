@@ -3,24 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { getRandomCustomQuestions } from '../data/custom-questions';
 import { questions } from '../data/questions';
-import { GameState, Player, Question, RoundResult } from '../types/game';
-
-// Stockage global des jeux (en mémoire)
-const games = new Map<string, GameState>();
-
-// Fonction pour nettoyer les jeux anciens (plus de 2 heures)
-function cleanupOldGames() {
-  const twoHoursAgo = Date.now() - (2 * 60 * 60 * 1000);
-  for (const [gameId, game] of games.entries()) {
-    if (game.lastUpdate < twoHoursAgo) {
-      console.log(`Cleaning up old game: ${gameId}`);
-      games.delete(gameId);
-    }
-  }
-}
-
-// Nettoyer les jeux anciens toutes les 10 minutes
-setInterval(cleanupOldGames, 10 * 60 * 1000);
+import { getGame, setGame } from '../lib/kv';
+import { Player, Question, RoundResult } from '../types/game';
 
 async function generateQuestionsForGame(count: number = 25): Promise<Question[]> {
   try {
@@ -66,7 +50,7 @@ function getRandomQuestion(gameQuestions: Question[], usedQuestionIds: string[] 
 export async function joinGame(gameId: string, playerName: string, playerId: string) {
   console.log(`Joining game: ${gameId}, Player: ${playerName} (${playerId})`);
   
-  let game = games.get(gameId);
+  let game = await getGame(gameId);
   
   if (!game) {
     console.log(`Creating new game: ${gameId}`);
@@ -84,7 +68,7 @@ export async function joinGame(gameId: string, playerName: string, playerId: str
       usedQuestions: [],
       gameQuestions: []
     };
-    games.set(gameId, game);
+    await setGame(gameId, game);
   }
 
   // Vérifier si le nom existe déjà
@@ -107,6 +91,7 @@ export async function joinGame(gameId: string, playerName: string, playerId: str
 
   console.log(`Player joined successfully: ${playerName}, Total players: ${game.players.length}`);
 
+  await setGame(gameId, game);
   revalidatePath('/');
   return { success: true, game };
 }
@@ -115,7 +100,7 @@ export async function joinGame(gameId: string, playerName: string, playerId: str
 export async function startGame(gameId: string, playerId: string, settings: { maxScore: number }) {
   console.log(`Starting game: ${gameId}, Player: ${playerId}, MaxScore: ${settings.maxScore}`);
   
-  const game = games.get(gameId);
+  const game = await getGame(gameId);
   
   if (!game) {
     console.log(`Game not found for start: ${gameId}`);
@@ -163,6 +148,7 @@ export async function startGame(gameId: string, playerId: string, settings: { ma
     
     console.log(`Game started successfully: ${gameId}, First player: ${game.players[0].name}`);
 
+    await setGame(gameId, game);
     revalidatePath('/');
     return { success: true, game };
   } catch (error) {
@@ -178,7 +164,7 @@ export async function startGame(gameId: string, playerId: string, settings: { ma
 
 // Server Action pour soumettre une supposition
 export async function submitGuess(gameId: string, playerId: string, value: number) {
-  const game = games.get(gameId);
+  const game = await getGame(gameId);
   
   if (!game) {
     console.log(`Game not found: ${gameId}`);
@@ -244,6 +230,7 @@ export async function submitGuess(gameId: string, playerId: string, value: numbe
       
       console.log(`Game ended because ${player.name} found the answer and reached negative max score. Winner: ${player.name}`);
       
+      await setGame(gameId, game);
       revalidatePath('/');
       return { 
         success: true, 
@@ -280,6 +267,7 @@ export async function submitGuess(gameId: string, playerId: string, value: numbe
       
       console.log(`New round started because ${player.name} found the answer. Score: ${player.score}, Round: ${game.roundNumber}`);
       
+      await setGame(gameId, game);
       revalidatePath('/');
       return { 
         success: true, 
@@ -299,13 +287,14 @@ export async function submitGuess(gameId: string, playerId: string, value: numbe
 
   console.log(`Guess submitted successfully. Player: ${player.name}, Value: ${value}, Next player: ${game.players[nextPlayerIndex].name}`);
 
+  await setGame(gameId, game);
   revalidatePath('/');
   return { success: true, game };
 }
 
 // Server Action pour lancer un défi
 export async function issueChallenge(gameId: string, playerId: string, targetPlayerId: string) {
-  const game = games.get(gameId);
+  const game = await getGame(gameId);
   
   if (!game) {
     console.log(`Game not found for challenge: ${gameId}`);
@@ -358,6 +347,7 @@ export async function issueChallenge(gameId: string, playerId: string, targetPla
     
     console.log(`Game ended. Winners: ${winners.map(w => w.name).join(', ')}`);
     
+    await setGame(gameId, game);
     revalidatePath('/');
     return { success: true, game, roundResult, gameEnded: true, winners };
   } else {
@@ -381,6 +371,7 @@ export async function issueChallenge(gameId: string, playerId: string, targetPla
     
     console.log(`New round started. First player: ${game.players[nextPlayerIndex].name}, Round: ${game.roundNumber}`);
     
+    await setGame(gameId, game);
     revalidatePath('/');
     return { success: true, game, roundResult };
   }
@@ -389,9 +380,8 @@ export async function issueChallenge(gameId: string, playerId: string, targetPla
 // Server Action pour obtenir l'état d'un jeu
 export async function getGameState(gameId: string) {
   console.log(`Getting game state for: ${gameId}`);
-  console.log(`Available games: ${Array.from(games.keys()).join(', ')}`);
   
-  const game = games.get(gameId);
+  const game = await getGame(gameId);
   if (!game) {
     console.log(`Game not found: ${gameId}`);
     return null;
@@ -403,13 +393,14 @@ export async function getGameState(gameId: string) {
 
 // Server Action pour nettoyer le résultat de manche
 export async function clearRoundResult(gameId: string) {
-  const game = games.get(gameId);
+  const game = await getGame(gameId);
   if (!game) {
     throw new Error('Game not found');
   }
   game.lastRoundResult = null;
   game.lastUpdate = Date.now();
   
+  await setGame(gameId, game);
   revalidatePath('/');
   return { success: true, game };
 } 
