@@ -17,6 +17,9 @@ export interface GameState {
   maxScore: number;
   roundNumber: number;
   lastUpdate: number;
+  lastRoundResult?: RoundResult | null;
+  usedQuestions: string[]; // IDs des questions déjà utilisées dans cette partie
+  gameQuestions: Question[]; // Questions générées par IA pour cette partie
 }
 
 export interface Question {
